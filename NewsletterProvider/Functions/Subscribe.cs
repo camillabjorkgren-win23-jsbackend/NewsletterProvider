@@ -17,20 +17,41 @@ public class Subscribe(ILogger<Subscribe> logger, DataContext context)
     [Function("Subscribe")]
     public async Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Function, "post")] HttpRequest req)
     {
-       var body = await new StreamReader(req.Body).ReadToEndAsync();
-        if (!string.IsNullOrWhiteSpace(body))
+      try
         {
-            var subscriber = JsonConvert.DeserializeObject<SubscribeToNewsletter>(body);
-            if(subscriber != null)
+            var body = await new StreamReader(req.Body).ReadToEndAsync();
+            if (!string.IsNullOrWhiteSpace(body))
             {
-                var existingSubscriber = await _context.Subscribers.FirstOrDefaultAsync(s => s.Email == subscriber.UserEmail || s.Email == subscriber.PreferredEmail);
-                if(existingSubscriber != null)
+                var subscriber = JsonConvert.DeserializeObject<SubscribeToNewsletter>(body);
+                if (subscriber != null && subscriber.UserEmail != null)
                 {
-                    if(subscriber.PreferredEmail != null)
+                    var existingSubscriber = await _context.Subscribers.FirstOrDefaultAsync(s => s.Email == subscriber.UserEmail);
+                    if (existingSubscriber != null)
                     {
-                        var updatedSubscriber = new SubscribeEntity
+                        if (subscriber.PreferredEmail != null)
                         {
-                            Email = subscriber.PreferredEmail,
+                            existingSubscriber.PreferredEmail = subscriber.PreferredEmail;
+                            _context.Update(existingSubscriber);
+                        }
+                        else
+                        {
+                            existingSubscriber.AdvertisingUpdates = subscriber.AdvertisingUpdates;
+                            existingSubscriber.WeekInReview = subscriber.WeekInReview;
+                            existingSubscriber.Podcasts = subscriber.Podcasts;
+                            existingSubscriber.StartupsWeekly = subscriber.StartupsWeekly;
+                            existingSubscriber.DailyNewsletter = subscriber.DailyNewsletter;
+                            existingSubscriber.EventUpdates = subscriber.EventUpdates;
+                        }
+
+                        await _context.SaveChangesAsync();
+                        return new OkObjectResult(new { Status = 200, Message = "Subscriber was updated" });
+                    }
+                    if (subscriber.PreferredEmail != null)
+                    {
+                        SubscribeEntity subscribeEntity = new SubscribeEntity
+                        {
+                            Email = subscriber.UserEmail,
+                            PreferredEmail = subscriber.PreferredEmail,
                             AdvertisingUpdates = subscriber.AdvertisingUpdates,
                             WeekInReview = subscriber.WeekInReview,
                             Podcasts = subscriber.Podcasts,
@@ -38,58 +59,35 @@ public class Subscribe(ILogger<Subscribe> logger, DataContext context)
                             DailyNewsletter = subscriber.DailyNewsletter,
                             EventUpdates = subscriber.EventUpdates
                         };
-                        _context.Subscribers.Remove(existingSubscriber);
-                        _context.Subscribers.Add(updatedSubscriber);
+                        _context.Subscribers.Add(subscribeEntity);
+                        await _context.SaveChangesAsync();
                     }
                     else
                     {
-                        existingSubscriber.AdvertisingUpdates = subscriber.AdvertisingUpdates;
-                        existingSubscriber.WeekInReview = subscriber.WeekInReview;
-                        existingSubscriber.Podcasts = subscriber.Podcasts;
-                        existingSubscriber.StartupsWeekly = subscriber.StartupsWeekly;
-                        existingSubscriber.DailyNewsletter = subscriber.DailyNewsletter;
-                        existingSubscriber.EventUpdates = subscriber.EventUpdates;
+                        SubscribeEntity subscribeEntity = new SubscribeEntity
+                        {
+                            Email = subscriber.UserEmail,
+                            AdvertisingUpdates = subscriber.AdvertisingUpdates,
+                            WeekInReview = subscriber.WeekInReview,
+                            Podcasts = subscriber.Podcasts,
+                            StartupsWeekly = subscriber.StartupsWeekly,
+                            DailyNewsletter = subscriber.DailyNewsletter,
+                            EventUpdates = subscriber.EventUpdates,
+                        };
+                        _context.Subscribers.Add(subscribeEntity);
+                        await _context.SaveChangesAsync();
                     }
 
-                    await _context.SaveChangesAsync();
-                    return new OkObjectResult(new { Status = 200, Message = "Subscriber was updated" });
-                }
-                if(subscriber.PreferredEmail != null)
-                {
-                    SubscribeEntity subscribeEntity = new SubscribeEntity
-                    {
-                        Email = subscriber.PreferredEmail,
-                        AdvertisingUpdates = subscriber.AdvertisingUpdates,
-                        WeekInReview = subscriber.WeekInReview,
-                        Podcasts = subscriber.Podcasts,
-                        StartupsWeekly = subscriber.StartupsWeekly,
-                        DailyNewsletter = subscriber.DailyNewsletter,
-                        EventUpdates = subscriber.EventUpdates
-                    };
-                    _context.Subscribers.Add(subscribeEntity);
-                    await _context.SaveChangesAsync();
-                }
-                else
-                {
-                    SubscribeEntity subscribeEntity = new SubscribeEntity
-                    {
-                        Email = subscriber.UserEmail,
-                        AdvertisingUpdates = subscriber.AdvertisingUpdates,
-                        WeekInReview = subscriber.WeekInReview,
-                        Podcasts = subscriber.Podcasts,
-                        StartupsWeekly = subscriber.StartupsWeekly,
-                        DailyNewsletter = subscriber.DailyNewsletter,
-                        EventUpdates = subscriber.EventUpdates
-                    };
-                    _context.Subscribers.Add(subscribeEntity);
-                    await _context.SaveChangesAsync();
+                    return new OkObjectResult(new { Status = 200, Message = "Subscribed sucessfully" });
                 }
 
-                return new OkObjectResult(new { Status = 200, Message = "Subscribed sucessfully" });
             }
- 
         }
-        _logger.LogError("Unable to subscribe");
+        catch (Exception ex)
+        {
+            _logger.LogError("Unable to subscribe");
+            return new BadRequestObjectResult(new { Status = 400, Message = "Unable to subscribe right now." });
+        }
         return new BadRequestObjectResult(new { Status = 400, Message = "Unable to subscribe right now." });
     }
 }
